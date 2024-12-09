@@ -1,5 +1,15 @@
+#pragma once
+
 #include <cstdint>
-#include <cfloat>
+
+namespace DSPSpectralSubtraction {
+
+struct float2
+{
+    float x;
+    float y;
+};
+
 
 enum class BitsPerSample
 {
@@ -68,12 +78,10 @@ public:
 
     void resetNoise(DataType_ *noise_signal, int noise_length);
 
-    void fftR2C(FFTReal_ *signal, FFTComplex_ *spectrum, const int batch);
-
-    void ifftC2R(FFTReal_ *signal, FFTComplex_ *spectrum, const int batch);
-
     void run(DataType_ *nosiy_signal, const uint32_t noisy_length);
 
     ~SpectralSubtraction();
 };
+
+} // namespace DSPSpectralSubtraction
 

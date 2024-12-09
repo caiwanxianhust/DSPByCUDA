@@ -1,6 +1,8 @@
 #include "wave.h"
 #include <cstdio>
 
+using DSPWave::WaveSignal;
+
 int main(int argc, char** argv) 
 {
     if (argc < 2) {

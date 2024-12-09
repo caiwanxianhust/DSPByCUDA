@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
+namespace DSPWave {
 int WaveSignal::readWave(const char *filePath)
 {
     // 第零步：从硬盘读取文件
@@ -175,3 +176,7 @@ void WaveSignal::resetTimeLen(const float time_len)
     this->dataSize = new_data_size;
     spdlog::info("the signal is reset to %f seconds", time_len);
 }
+
+} // namespace DSPWave
+
+

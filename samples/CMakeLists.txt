@@ -7,7 +7,7 @@ set (wave_mix_files
 )
 
 set (spec_sub_16bit_files
-    specSub_16bit.cu
+    specSub_16bit.cpp
 )
 
 set (SAMPLES_HEADER_DIR

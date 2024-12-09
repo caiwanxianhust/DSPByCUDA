@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 
+namespace DSPWave {
 struct WaveSignal
 {
     /* data */
@@ -39,3 +40,7 @@ private:
     WaveSignal(const WaveSignal &wave);
     WaveSignal &operator=(const WaveSignal &wave);
 };
+
+
+} // namespace DSPWave
+

@@ -2,6 +2,8 @@
 #include "specSub_kernels.cuh"
 #include "utils.h"
 
+namespace DSPSpectralSubtraction {
+
 template <BitsPerSample BITS_>
 SpectralSubtraction<BITS_>::SpectralSubtraction(int32_t frame_len, int32_t hop_len, int32_t rank, DataType_ *noise_signal, uint32_t noise_length, uint32_t max_length, float alpha, float beta) : 
 frame_len_(frame_len), hop_len_(hop_len), rank_(rank), max_length_(max_length), alpha_(alpha), beta_(beta)
@@ -56,11 +58,13 @@ frame_len_(frame_len), hop_len_(hop_len), rank_(rank), max_length_(max_length), 
     inembed[1] = noise_batch;
     onembed[1] = spectrum_len;
 
+    cufftComplex *d_noise_spectrum_buf_ = reinterpret_cast<cufftComplex *>(noise_spectrum_buf_);
+
     CHECK_CUFFT_STATUS(cufftPlanMany(&noise_fft_plan, rank_, n, inembed, istride, idist, onembed, ostride,
                                      odist, CUFFT_R2C, noise_batch));
-    CHECK_CUFFT_STATUS(cufftExecR2C(noise_fft_plan, noise_buf_, noise_spectrum_buf_));
+    CHECK_CUFFT_STATUS(cufftExecR2C(noise_fft_plan, noise_buf_, d_noise_spectrum_buf_));
 
-    launchPowerBlockReduceSum(noise_spectrum_buf_, mean_noise_power_spectrum_, spectrum_len, noise_batch, 2.0f);
+    launchPowerBlockReduceSum(d_noise_spectrum_buf_, mean_noise_power_spectrum_, spectrum_len, noise_batch, 2.0f);
     CHECK_CUFFT_STATUS(cufftDestroy(noise_fft_plan));
 }
 
@@ -91,58 +95,14 @@ void SpectralSubtraction<BITS_>::resetNoise(DataType_ *noise_signal, int noise_l
     inembed[1] = noise_batch;
     onembed[1] = spectrum_len;
 
+    cufftComplex *d_noise_spectrum_buf_ = reinterpret_cast<cufftComplex *>(noise_spectrum_buf_);
+
     CHECK_CUFFT_STATUS(cufftPlanMany(&noise_fft_plan, rank_, n, inembed, istride, idist, onembed, ostride,
                                      odist, CUFFT_R2C, noise_batch));
-    CHECK_CUFFT_STATUS(cufftExecR2C(noise_fft_plan, noise_buf_, noise_spectrum_buf_));
+    CHECK_CUFFT_STATUS(cufftExecR2C(noise_fft_plan, noise_buf_, d_noise_spectrum_buf_));
 
-    launchPowerBlockReduceSum(noise_spectrum_buf_, mean_noise_power_spectrum_, spectrum_len, noise_batch, 2.0f);
+    launchPowerBlockReduceSum(d_noise_spectrum_buf_, mean_noise_power_spectrum_, spectrum_len, noise_batch, 2.0f);
     CHECK_CUFFT_STATUS(cufftDestroy(noise_fft_plan));
-}
-
-template <BitsPerSample BITS_>
-void SpectralSubtraction<BITS_>::fftR2C(FFTReal_ *signal, FFTComplex_ *spectrum, const int batch)
-{
-    cufftHandle plan;
-    int n[1];
-    n[0] = frame_len_;
-    int istride = 1;
-    int idist = frame_len_;
-    int ostride = 1;
-    int odist = frame_len_ / 2 + 1;
-    int inembed[2];
-    int onembed[2];
-    inembed[0] = frame_len_;
-    onembed[0] = frame_len_ / 2 + 1;
-    inembed[1] = batch;
-    onembed[1] = batch;
-
-    CHECK_CUFFT_STATUS(cufftPlanMany(&plan, rank_, n, inembed, istride, idist, onembed, ostride,
-                                     odist, CUFFT_R2C, batch));
-    CHECK_CUFFT_STATUS(cufftExecR2C(plan, signal, spectrum));
-    CHECK_CUFFT_STATUS(cufftDestroy(plan));
-}
-
-template <BitsPerSample BITS_>
-void SpectralSubtraction<BITS_>::ifftC2R(FFTReal_ *signal, FFTComplex_ *spectrum, const int batch)
-{
-    cufftHandle plan;
-    int n[1];
-    n[0] = frame_len_;
-    int istride = 1;
-    int idist = frame_len_ / 2 + 1;
-    int ostride = 1;
-    int odist = frame_len_;
-    int inembed[2];
-    int onembed[2];
-    inembed[0] = frame_len_ / 2 + 1;
-    onembed[0] = frame_len_;
-    inembed[1] = batch;
-    onembed[1] = batch;
-
-    CHECK_CUFFT_STATUS(cufftPlanMany(&plan, rank_, n, inembed, istride, idist, onembed, ostride,
-                                     odist, CUFFT_C2R, batch));
-    CHECK_CUFFT_STATUS(cufftExecC2R(plan, spectrum, signal));
-    CHECK_CUFFT_STATUS(cufftDestroy(plan));
 }
 
 /**
@@ -152,6 +112,12 @@ void SpectralSubtraction<BITS_>::ifftC2R(FFTReal_ *signal, FFTComplex_ *spectrum
 template <BitsPerSample BITS_>
 void SpectralSubtraction<BITS_>::run(DataType_ *nosiy_signal, const uint32_t noisy_length)
 {
+    cudaEvent_t start, stop;
+    CHECK_CUDA_ERROR(cudaEventCreate(&start));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stop));
+    CHECK_CUDA_ERROR(cudaEventRecord(start));
+    cudaEventQuery(start);
+
     assert(noisy_length < max_length_);
 
     launchInitKernel(overlap_counts_buf_, denoised_signal_buf_, noisy_length);
@@ -177,12 +143,14 @@ void SpectralSubtraction<BITS_>::run(DataType_ *nosiy_signal, const uint32_t noi
     inembed[1] = noisy_batch;
     onembed[1] = noisy_batch;
 
+    cufftComplex *d_noisy_spectrum_buf_ = reinterpret_cast<cufftComplex *>(noisy_spectrum_buf_);
+
     CHECK_CUFFT_STATUS(cufftPlanMany(&noisy_fft_plan, rank_, n, inembed, istride, idist, onembed, ostride,
                                      odist, CUFFT_R2C, noisy_batch));
-    CHECK_CUFFT_STATUS(cufftExecR2C(noisy_fft_plan, noisy_buf_, noisy_spectrum_buf_));
+    CHECK_CUFFT_STATUS(cufftExecR2C(noisy_fft_plan, noisy_buf_, d_noisy_spectrum_buf_));
 
     // 谱减、加相位建谱
-    launchSpecSubKernel(noisy_spectrum_buf_, mean_noise_power_spectrum_, spectrum_len, noisy_batch, alpha_, beta_);
+    launchSpecSubKernel(d_noisy_spectrum_buf_, mean_noise_power_spectrum_, spectrum_len, noisy_batch, alpha_, beta_);
 
     cufftHandle ifft_plan;
     idist = spectrum_len;
@@ -193,7 +161,7 @@ void SpectralSubtraction<BITS_>::run(DataType_ *nosiy_signal, const uint32_t noi
     // 计算去噪声信号频谱的逆傅里叶变换
     CHECK_CUFFT_STATUS(cufftPlanMany(&ifft_plan, rank_, n, inembed, istride, idist, onembed, ostride,
                                      odist, CUFFT_C2R, noisy_batch));
-    CHECK_CUFFT_STATUS(cufftExecC2R(ifft_plan, noisy_spectrum_buf_, noisy_buf_));
+    CHECK_CUFFT_STATUS(cufftExecC2R(ifft_plan, d_noisy_spectrum_buf_, noisy_buf_));
 
     // 去窗、恢复信号
     float fft_scale = 1.0f / frame_len_;
@@ -208,6 +176,14 @@ void SpectralSubtraction<BITS_>::run(DataType_ *nosiy_signal, const uint32_t noi
     CHECK_CUFFT_STATUS(cufftDestroy(noisy_fft_plan));
     CHECK_CUFFT_STATUS(cufftDestroy(ifft_plan));
     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    
+    CHECK_CUDA_ERROR(cudaEventRecord(stop));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
+    float elapsedTime;
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&elapsedTime, start, stop));
+    CHECK_CUDA_ERROR(cudaEventDestroy(start));
+    CHECK_CUDA_ERROR(cudaEventDestroy(stop));
+    printf("Time = %g ms.\n", elapsedTime);
 }
 
 template <BitsPerSample BITS_>
@@ -222,3 +198,5 @@ SpectralSubtraction<BITS_>::~SpectralSubtraction()
 
 template class SpectralSubtraction<BitsPerSample::BIT8>;
 template class SpectralSubtraction<BitsPerSample::BIT16>;
+
+} // namespace DSPSpectralSubtraction

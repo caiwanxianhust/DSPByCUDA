@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <cufft.h>
 
-
+namespace DSPSpectralSubtraction {
 
 // Complex abs
 __device__ __host__ inline float ComplexABS(cufftComplex a)
@@ -413,4 +413,6 @@ void launchInitKernel(int *overlap_counts, float *denoise_signal, const uint32_t
     int block_size = 256;
     int grid_size = (length - 1) / block_size + 1;
     initKernel<<<grid_size, block_size, 0, stream>>>(overlap_counts, denoise_signal, length);
+}
+
 }

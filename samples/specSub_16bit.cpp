@@ -1,9 +1,13 @@
 #include "wave.h"
 #include "spectralSubtraction.h"
-#include "utils.h"
 
+#include <cstdio>
 #include <assert.h>
 
+using DSPWave::WaveSignal;
+using DSPSpectralSubtraction::SpectralSubtraction;
+using DSPSpectralSubtraction::SpectralSubtractionTraits;
+using DSPSpectralSubtraction::BitsPerSample;
 
 template <BitsPerSample BITS_>
 void deNoise(int32_t frame_len, int32_t hop_len, char *noise_signal, uint32_t noise_len, uint32_t max_length, char *noisy_signal, uint32_t noisy_len)
@@ -12,22 +16,7 @@ void deNoise(int32_t frame_len, int32_t hop_len, char *noise_signal, uint32_t no
     typedef typename Traits_::DataType DataType_;
 
     SpectralSubtraction<BITS_> model(frame_len, hop_len, 1, (DataType_ *)noise_signal, noise_len, max_length);
-    
-    cudaEvent_t start, stop;
-    CHECK_CUDA_ERROR(cudaEventCreate(&start));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop));
-    CHECK_CUDA_ERROR(cudaEventRecord(start));
-    cudaEventQuery(start);
-
     model.run((DataType_ *)noisy_signal, noisy_len);
-
-    CHECK_CUDA_ERROR(cudaEventRecord(stop));
-    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
-    float elapsedTime;
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&elapsedTime, start, stop));
-    CHECK_CUDA_ERROR(cudaEventDestroy(start));
-    CHECK_CUDA_ERROR(cudaEventDestroy(stop));
-    printf("Time = %g ms.\n", elapsedTime);
 }
 
 template void deNoise<BitsPerSample::BIT16>(int32_t frame_len, int32_t hop_len, char *noise_signal, uint32_t noise_len, uint32_t max_length, char *noisy_signal, uint32_t noisy_len);
